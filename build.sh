@@ -15,6 +15,7 @@ repo sync -c
 
 cd /build/llvm-toolchain/toolchain/llvm-project
 git remote add upstream https://github.com/llvm/llvm-project
+git fetch upstream
 
 cd /build/llvm-toolchain/external/toolchain-utils
 NEW_SVN=$(python3 llvm_tools/git_llvm_rev.py --llvm_dir /build/llvm-toolchain/toolchain/llvm-project --sha $COMMIT_HASH --upstream upstream)
@@ -26,4 +27,5 @@ sed "s/_patch_level =.*/_patch_level = '0'/g" -i android_version.py
 sed "s/_svn_revision =.*/_svn_revision = '$NEW_SVN'/g" -i android_version.py
 
 # TODO: Figure how to do PGO via --build-instrumented and do_test_build.py
-python3 build.py --lto --build-name adrian --skip-tests --no-build windows,lldb
+# One patch breaks it right now, so don't apply them
+python3 build.py --lto --build-name adrian --skip-apply-patches --skip-tests --no-build windows,lldb
