@@ -28,4 +28,8 @@ sed "s/_svn_revision =.*/_svn_revision = '$NEW_SVN'/g" -i android_version.py
 
 # TODO: Figure how to do PGO via --build-instrumented and do_test_build.py
 # One patch breaks it right now, so don't apply them
-python3 build.py --lto --build-name adrian --skip-apply-patches --skip-tests --no-build windows,lldb
+python3 build.py --lto --build-name adrian --skip-tests --no-build windows,lldb
+
+cd /build/llvm-toolchain/out/install/linux-x86/clang-adrian
+XZ_OPT="-9 -T0" tar cJf clang-$NEW_SVN.tar.xz .
+mv clang-$NEW_SVN.tar.xz /

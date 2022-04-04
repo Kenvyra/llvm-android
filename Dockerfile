@@ -7,10 +7,13 @@ RUN microdnf install -y \
     g++ \
     git-core \
     hostname \
+    jq \
     patch \
     perl \
     python3 \
-    rsync
+    rsync \
+    tar \
+    xz
 
 RUN curl http://commondatastorage.googleapis.com/git-repo-downloads/repo > /usr/bin/repo && chmod +x /usr/bin/repo
 
