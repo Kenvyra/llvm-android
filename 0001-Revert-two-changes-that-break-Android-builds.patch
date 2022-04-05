@@ -1,0 +1,194 @@
+From d107982ce9fb8cc20b24d8c7361c1d012861294e Mon Sep 17 00:00:00 2001
+From: Jens Reidel <adrian@travitia.xyz>
+Date: Tue, 5 Apr 2022 13:43:56 +0200
+Subject: [PATCH 1/1] Revert two changes that break Android builds.
+
+* Earlier versions of lld were able to replace Android's
+  lld.gold and link most files.
+* With two recent lld changes, debuggerd_test64 and some other files
+  failed to link because libunwindstack.a is linked like --whole-archive.
+  We need to revert the following two changes:
+  * "Put undefined symbols from shared libraries in the symbol table."
+     lld/trunk@326242
+  * "Make undefined symbol in DSO to pull out object files from archive files."
+     lld/trunk@325849
+
+Bug: 74755833
+Change-Id: Idf05ca82d8dc5d8f1593e6f6a64c609d3fa10c14
+---
+ lld/ELF/Driver.cpp                     |  4 ++++
+ lld/ELF/InputFiles.cpp                 |  7 +------
+ lld/ELF/InputFiles.h                   |  8 ++++++++
+ lld/ELF/LinkerScript.cpp               |  4 ++++
+ lld/ELF/SymbolTable.cpp                | 23 +++++++++++++++++++++++
+ lld/ELF/SymbolTable.h                  |  1 +
+ lld/test/ELF/shlib-undefined-archive.s | 19 -------------------
+ lld/test/ELF/trace-symbols.s           |  2 +-
+ 8 files changed, 42 insertions(+), 26 deletions(-)
+ delete mode 100644 lld/test/ELF/shlib-undefined-archive.s
+
+diff --git a/lld/ELF/Driver.cpp b/lld/ELF/Driver.cpp
+index b221d17c314d..9ca564224899 100644
+--- a/lld/ELF/Driver.cpp
++++ b/lld/ELF/Driver.cpp
+@@ -2538,6 +2538,10 @@ void LinkerDriver::link(opt::InputArgList &args) {
+   // They also might be exported if referenced by DSOs.
+   script->declareSymbols();
+ 
++  if (!config->shared) {
++    invokeELFT(symtab->scanShlibUndefined);
++  }
++
+   // Handle --exclude-libs. This is before scanVersionScript() due to a
+   // workaround for Android ndk: for a defined versioned symbol in an archive
+   // without a version node in the version script, Android does not expect a
+diff --git a/lld/ELF/InputFiles.cpp b/lld/ELF/InputFiles.cpp
+index 1bce8de193bb..16b0b2826d21 100644
+--- a/lld/ELF/InputFiles.cpp
++++ b/lld/ELF/InputFiles.cpp
+@@ -1454,12 +1454,7 @@ template <class ELFT> void SharedFile::parse() {
+         name = saver().save(
+             (name + "@" + verName).toStringRef(versionedNameBuffer));
+       }
+-      Symbol *s = symtab.addSymbol(
+-          Undefined{this, name, sym.getBinding(), sym.st_other, sym.getType()});
+-      s->exportDynamic = true;
+-      if (s->isUndefined() && sym.getBinding() != STB_WEAK &&
+-          config->unresolvedSymbolsInShlib != UnresolvedPolicy::Ignore)
+-        requiredSymbols.push_back(s);
++      this->Undefs.insert(name);
+       continue;
+     }
+ 
+diff --git a/lld/ELF/InputFiles.h b/lld/ELF/InputFiles.h
+index 68129d0d298d..3b53d91fb5e0 100644
+--- a/lld/ELF/InputFiles.h
++++ b/lld/ELF/InputFiles.h
+@@ -53,6 +53,7 @@ class InputFile {
+ protected:
+   SmallVector<Symbol *, 0> symbols;
+   SmallVector<InputSectionBase *, 0> sections;
++  llvm::DenseSet<StringRef> Undefs;
+ 
+ public:
+   enum Kind : uint8_t {
+@@ -88,6 +89,13 @@ public:
+     return symbols;
+   }
+ 
++  // Returns undefined symbols of a shared library.
++  // It is a runtime error to call this function on files of other types.
++  const llvm::DenseSet<StringRef> &getUndefinedSymbols() {
++    assert(fileKind == SharedKind);
++    return Undefs;
++  }
++
+   // Get filename to use for linker script processing.
+   StringRef getNameForScript() const;
+ 
+diff --git a/lld/ELF/LinkerScript.cpp b/lld/ELF/LinkerScript.cpp
+index 911d6dfbe113..b385241a46e0 100644
+--- a/lld/ELF/LinkerScript.cpp
++++ b/lld/ELF/LinkerScript.cpp
+@@ -206,6 +206,10 @@ static bool shouldDefineSym(SymbolAssignment *cmd) {
+   Symbol *b = symtab->find(cmd->name);
+   if (b && !b->isDefined() && !b->isCommon())
+     return true;
++  // It might also be referenced by a DSO.
++  for (InputFile *F : sharedFiles)
++    if (F->getUndefinedSymbols().count(cmd->name))
++      return true;
+   return false;
+ }
+ 
+diff --git a/lld/ELF/SymbolTable.cpp b/lld/ELF/SymbolTable.cpp
+index e92d4f8bd569..b9966c1ecb5c 100644
+--- a/lld/ELF/SymbolTable.cpp
++++ b/lld/ELF/SymbolTable.cpp
+@@ -121,6 +121,24 @@ Symbol *SymbolTable::find(StringRef name) {
+   return symVector[it->second];
+ }
+ 
++// This function takes care of the case in which shared libraries depend on
++// the user program (not the other way, which is usual). Shared libraries
++// may have undefined symbols, expecting that the user program provides
++// the definitions for them. An example is BSD's __progname symbol.
++// We need to put such symbols to the main program's .dynsym so that
++// shared libraries can find them.
++// Except this, we ignore undefined symbols in DSOs.
++template <class ELFT> void SymbolTable::scanShlibUndefined() {
++  for (InputFile *F : sharedFiles) {
++    for (StringRef U : F->getUndefinedSymbols()) {
++      Symbol *Sym = find(U);
++      if (!Sym || !Sym->isDefined())
++        continue;
++      Sym->exportDynamic = true;
++    }
++  }
++}
++
+ // A version script/dynamic list is only meaningful for a Defined symbol.
+ // A CommonSymbol will be converted to a Defined in replaceCommonSymbols().
+ // A lazy symbol may be made Defined if an LTO libcall extracts it.
+@@ -337,3 +355,8 @@ void SymbolTable::scanVersionScript() {
+   // --dynamic-list.
+   handleDynamicList();
+ }
++
++template void SymbolTable::scanShlibUndefined<ELF32LE>();
++template void SymbolTable::scanShlibUndefined<ELF32BE>();
++template void SymbolTable::scanShlibUndefined<ELF64LE>();
++template void SymbolTable::scanShlibUndefined<ELF64BE>();
+diff --git a/lld/ELF/SymbolTable.h b/lld/ELF/SymbolTable.h
+index 5cc0eae87bb9..da23d3e7188d 100644
+--- a/lld/ELF/SymbolTable.h
++++ b/lld/ELF/SymbolTable.h
+@@ -42,6 +42,7 @@ public:
+   Symbol *addSymbol(const Symbol &newSym);
+   Symbol *addAndCheckDuplicate(const Defined &newSym);
+ 
++  template <class ELFT> void scanShlibUndefined();
+   void scanVersionScript();
+ 
+   Symbol *find(StringRef name);
+diff --git a/lld/test/ELF/shlib-undefined-archive.s b/lld/test/ELF/shlib-undefined-archive.s
+deleted file mode 100644
+index 940d8d7bc0c5..000000000000
+--- a/lld/test/ELF/shlib-undefined-archive.s
++++ /dev/null
+@@ -1,19 +0,0 @@
+-# REQUIRES: x86
+-
+-# Undefined symbols in a DSO should pull out object files from archives
+-# to resolve them.
+-
+-# RUN: echo '.globl foo' | llvm-mc -filetype=obj -triple=x86_64-linux-gnu -o %t1.o -
+-# RUN: ld.lld -shared -o %t.so %t1.o
+-
+-# RUN: llvm-mc -filetype=obj -triple=x86_64-linux-gnu -o %t2.o %s
+-# RUN: rm -f %t.a
+-# RUN: llvm-ar cru %t.a %t2.o
+-# RUN: ld.lld -o %t.exe %t.so %t.a
+-# RUN: llvm-nm -D %t.exe | FileCheck %s
+-
+-# CHECK: T foo
+-
+-.globl foo
+-foo:
+-  ret
+diff --git a/lld/test/ELF/trace-symbols.s b/lld/test/ELF/trace-symbols.s
+index 785414e2bd5b..7c3f335deab7 100644
+--- a/lld/test/ELF/trace-symbols.s
++++ b/lld/test/ELF/trace-symbols.s
+@@ -82,7 +82,7 @@
+ 
+ # RUN: ld.lld -y foo -y bar %t %t1.so %t2.so -o %t3 | \
+ # RUN:   FileCheck -check-prefix=SHLIBRBAR %s
+-# SHLIBRBAR: trace-symbols.s.tmp1.so: reference to bar
++# SHLIBRBAR-NOT: trace-symbols.s.tmp1.so: reference to bar
+ 
+ # RUN: ld.lld -y foo -y bar %t -u bar --start-lib %t1 %t2 --end-lib -o %t3 | \
+ # RUN:   FileCheck -check-prefix=STARTLIB %s
+-- 
+2.35.1
+
