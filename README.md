@@ -4,4 +4,4 @@ Build scripts to generate a bleeding edge LLVM toolchain based on [Google's buil
 
 ## TODO
 
-* I can't get PGO to work, there are zero instructions by Google on this topic
+* Maybe add BOLT support, but that might blow up compilation times exponentially

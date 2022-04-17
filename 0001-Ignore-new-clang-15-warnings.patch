@@ -1,0 +1,25 @@
+From af0adb68c3d2ce92372fc40f733bea3cd37db538 Mon Sep 17 00:00:00 2001
+From: Jens Reidel <adrian@travitia.xyz>
+Date: Sun, 17 Apr 2022 21:02:28 +0200
+Subject: [PATCH 1/1] Ignore new clang 15 warnings
+
+---
+ cc/config/global.go | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/cc/config/global.go b/cc/config/global.go
+index 65bfbf0f9..0287c65a6 100644
+--- a/cc/config/global.go
++++ b/cc/config/global.go
+@@ -234,6 +234,8 @@ var (
+ 		// New warnings to be fixed after clang-r433403
+ 		"-Wno-error=unused-but-set-variable",  // http://b/197240255
+ 		"-Wno-error=unused-but-set-parameter", // http://b/197240255
++		"-Wno-error=unqualified-std-cast-call",
++		"-Wno-error=deprecated-non-prototype",
+ 	}
+ 
+ 	noOverrideExternalGlobalCflags = []string{
+-- 
+2.35.1
+
