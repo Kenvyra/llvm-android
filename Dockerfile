@@ -35,14 +35,11 @@ RUN microdnf install -y \
     procps-ng \
     openssh-clients \
     freetype \
-    freetype-devel \
-    ninja-build \ # TODO: Below this may be optional
-    glibc-devel \
-    glibc-devel.i686
+    freetype-devel
 
 RUN curl http://commondatastorage.googleapis.com/git-repo-downloads/repo > /usr/bin/repo && chmod +x /usr/bin/repo
 
 WORKDIR /build
 COPY . .
 
-CMD [ "bash", "build.sh" ]
+CMD [ "bash" ]

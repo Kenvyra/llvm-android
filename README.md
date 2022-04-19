@@ -6,4 +6,4 @@ Prebuilts can be found at https://ftp.travitia.xyz/clang/.
 
 ## TODO
 
-* Maybe add BOLT support, but that might blow up compilation times exponentially
+* Figure how to make BOLT more efficient (takes up way too much space right now)
