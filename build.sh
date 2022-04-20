@@ -37,6 +37,9 @@ NEW_SVN=$(python3 llvm_tools/git_llvm_rev.py --llvm_dir /build/llvm-toolchain/to
 # Merge the commit into Android's LLVM fork
 cd /build/llvm-toolchain/toolchain/llvm_android
 
+# Apply a patch that fixes issue with Android's libxml2
+git am -3 /build/0001-Do-not-install-LLDB-deps-if-not-building-LLDB.patch
+
 # Merge the commit into Android's LLVM fork
 ./merge_from_upstream.py --rev $NEW_SVN
 
