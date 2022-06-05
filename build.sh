@@ -47,9 +47,6 @@ git am -3 /build/0001-Do-not-install-LLDB-deps-if-not-building-LLDB.patch
 sed "s/_patch_level =.*/_patch_level = '0'/g" -i android_version.py
 sed "s/_svn_revision =.*/_svn_revision = '$NEW_SVN'/g" -i android_version.py
 
-# One patch is currently broken, so hotfix it with a local one
-mv /build/0001-Revert-two-changes-that-break-Android-builds.patch patches/Revert-two-changes-that-break-Android-builds.v7.patch
-
 # Do an initial build ready for PGO generation
 python3 build.py --build-instrumented --build-name adrian --skip-tests --no-build windows,lldb
 
@@ -72,7 +69,7 @@ rm -rf /build/llvm-toolchain/out/
 
 # Do a new LLVM build with the profdata and ready for BOLT instrumentation
 cd /build/llvm-toolchain/toolchain/llvm_android
-python3 build.py --lto --bolt-instrument --build-name adrian --skip-tests --no-build windows,lldb
+python3 build.py --pgo --lto --bolt-instrument --build-name adrian --skip-tests --no-build windows,lldb
 
 # Create bolt out dir
 mkdir /build/llvm-toolchain/out/bolt_collection/
@@ -95,7 +92,7 @@ rm -rf /build/llvm-toolchain/out/
 
 # Do a final build
 cd /build/llvm-toolchain/toolchain/llvm_android
-python3 build.py --lto --bolt --build-name adrian --skip-tests --no-build windows,lldb
+python3 build.py --pgo --lto --bolt --build-name adrian --skip-tests --no-build windows,lldb
 
 cd /build/llvm-toolchain/out/install/linux-x86/clang-adrian
 XZ_OPT="-9 -T0" tar cJf clang-$NEW_SVN.tar.xz .
