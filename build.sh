@@ -22,7 +22,7 @@ ccache -M $CACHE_SIZE
 
 # Download Google's dependencies
 mkdir llvm-toolchain && cd llvm-toolchain
-repo init -u https://android.googlesource.com/platform/manifest -b master-plus-llvm
+repo init -u https://android.googlesource.com/platform/manifest -b llvm-toolchain
 repo sync -c --jobs-network=$(( $THREAD_COUNT < 16 ? $THREAD_COUNT : 16 )) -j$THREAD_COUNT --jobs-checkout=$THREAD_COUNT --no-clone-bundle --no-tags
 
 # Add the upstream LLVM remote
@@ -48,21 +48,26 @@ sed "s/_patch_level =.*/_patch_level = '0'/g" -i android_version.py
 sed "s/_svn_revision =.*/_svn_revision = '$NEW_SVN'/g" -i android_version.py
 
 # Do an initial build ready for PGO generation
-python3 build.py --build-instrumented --build-name adrian --skip-tests --no-build windows,lldb
+python3 build.py --lto --build-instrumented --build-name adrian --skip-tests --no-build windows,lldb
+
+# Build is in /build/llvm-toolchain/out/stage2-install
+git clone https://github.com/ClangBuiltLinux/tc-build /tc-build
+mkdir -p /tc-build/build/llvm/
+cp -r /build/llvm-toolchain/out/stage2-install /tc-build/build/llvm/stage2
+
 
 # Do a PGO profiling run
+cd /tc-build/
+kernel/build.sh --pgo -t "ARM;AArch64;X86" -b /tc-build/build/llvm/
 
-# Patch some new warnings to make Android build
-cd /build/llvm-toolchain/build/soong
-git am -3 /build/0001-Ignore-new-clang-15-warnings.patch
+# PGO data is in /build/llvm-toolchain/out/stage2/profiles/*.profraw
 
-cd /build/llvm-toolchain
-
-# Now run the PGO
-prebuilts/python/linux-x86/bin/python3 toolchain/llvm_android/test_compiler.py --build-only --target aosp_raven-eng --no-clean-built-target --generate-clang-profile --clang-path out/install/linux-x86/clang-adrian/ ./
+cd /build/llvm-toolchain/out/stage2/profiles
+/build/llvm-toolchain/out/stage1-install/bin/llvm-profdata merge -o $NEW_SVN.profdata *.profraw
+tar -cvjSf pgo-$NEW_SVN.tar.bz2 $NEW_SVN.profdata
 
 # Copy profdata to where Google wants it to be
-cp /build/llvm-toolchain/out/pgo-$NEW_SVN.tar.bz2 /build/llvm-toolchain/prebuilts/clang/host/linux-x86/profiles/
+cp pgo-$NEW_SVN.tar.bz2 /build/llvm-toolchain/prebuilts/clang/host/linux-x86/profiles/
 
 # Delete old LLVM build
 rm -rf /build/llvm-toolchain/out/
@@ -74,18 +79,19 @@ python3 build.py --pgo --lto --bolt-instrument --build-name adrian --skip-tests 
 # Create bolt out dir
 mkdir /build/llvm-toolchain/out/bolt_collection/
 
-# Do yet another build of Android to generate BOLT data
-# --generate-clang-profile is used because it makes the build faster
-cd /build/llvm-toolchain
-prebuilts/python/linux-x86/bin/python3 toolchain/llvm_android/test_compiler.py --build-only --target aosp_raven-eng --no-clean-built-target --generate-clang-profile --clang-path out/stage2-install/ ./
+cd /tc-build/
+rm -rf build
+mkdir -p /tc-build/build/llvm/
+cp -r /build/llvm-toolchain/out/stage2-install /tc-build/build/llvm/stage2
+kernel/build.sh --pgo -t X86 -b /tc-build/build/llvm/
 
 # Merge all the bolt data into one
-cd /build/llvm-toolchain/out/bolt_collection/
+cd /build/llvm-toolchain/out/bolt_collection/clang
 /build/llvm-toolchain/out/stage2-install/bin/merge-fdata *.fdata > clang.fdata
 tar -cvjf bolt-$NEW_SVN.tar.bz2 clang.fdata
 
 # Copy bolt data to where Google wants it to be
-cp /build/llvm-toolchain/out/bolt_collection/bolt-$NEW_SVN.tar.bz2 /build/llvm-toolchain/prebuilts/clang/host/linux-x86/profiles/
+cp /build/llvm-toolchain/out/bolt_collection/clang/bolt-$NEW_SVN.tar.bz2 /build/llvm-toolchain/prebuilts/clang/host/linux-x86/profiles/
 
 # Delete old builds
 rm -rf /build/llvm-toolchain/out/

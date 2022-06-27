@@ -1,41 +1,54 @@
 FROM registry.fedoraproject.org/fedora-minimal:36
 
 RUN microdnf install -y \
+    autoconf \
+    automake \
+    bc \
     binutils \
+    binutils-devel \
+    bison \
+    bzip2 \
+    ccache \
     curl \
-    gcc \
+    diffutils \
+    elfutils-libelf-devel \
+    file \
+    findutils \
+    flex \
+    freetype \
+    freetype-devel \
     g++ \
+    gcc \
+    gdb \
     git-core \
+    glibc-devel \
+    glibc-devel.i686 \
     hostname \
     jq \
-    patch \
-    perl \
-    python3 \
-    rsync \
-    tar \
-    xz \
-    bison \
-    ncurses-compat-libs \
-    ccache \
-    patchutils \
-    automake \
-    autoconf \
-    flex \
-    gdb \
-    glibc-devel \
     libtool \
+    make \
+    ncurses-compat-libs \
+    openssh-clients \
+    openssl \
+    openssl-devel \
+    patch \
+    patchelf \
+    patchutils \
+    perf \
+    perl \
     pkgconf \
     pkgconf-m4 \
     pkgconf-pkg-config \
-    strace \
-    bzip2 \
-    make \
-    openssl \
-    openssl-devel \
     procps-ng \
-    openssh-clients \
-    freetype \
-    freetype-devel
+    python3 \
+    rsync \
+    ninja-build \
+    strace \
+    tar \
+    texinfo \
+    uboot-tools \
+    xz \
+    zlib-devel
 
 RUN curl http://commondatastorage.googleapis.com/git-repo-downloads/repo > /usr/bin/repo && chmod +x /usr/bin/repo
 
