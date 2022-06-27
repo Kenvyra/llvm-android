@@ -1,0 +1,26 @@
+From 96b9276139b137ca617993f0b701c40beb9b7dd6 Mon Sep 17 00:00:00 2001
+From: Jens Reidel <jens.reidel@gmail.com>
+Date: Mon, 27 Jun 2022 22:04:05 +0200
+Subject: [PATCH] Workaround breaking changes in D107799
+
+Change-Id: I4966445560c225c425c2c8283e734b9560580e1c
+---
+ base_builders.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/base_builders.py b/base_builders.py
+index c021ad1..2760ebc 100644
+--- a/base_builders.py
++++ b/base_builders.py
+@@ -378,6 +378,8 @@ class CMakeBuilder(Builder):
+             'CMAKE_FIND_ROOT_PATH_MODE_PROGRAM': 'NEVER',
+ 
+             'CMAKE_POSITION_INDEPENDENT_CODE': 'ON',
++
++            'LLVM_ENABLE_PER_TARGET_RUNTIME_DIR': 'OFF',
+         }
+         linker = self._config.get_linker(self.toolchain)
+         if linker:
+-- 
+2.36.1
+
