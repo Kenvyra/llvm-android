@@ -43,6 +43,9 @@ git am -3 /build/0001-Do-not-install-LLDB-deps-if-not-building-LLDB.patch
 # Apply a patch that works around a breaking change that breaks Android clang builds: https://reviews.llvm.org/D107799
 git am -3 /build/0001-Workaround-breaking-changes-in-D107799.patch
 
+# Apply a patch that fixes building LLVM 16+
+git am -3 /build/0001-SONAME-is-the-same-as-major-in-LLVM-16.patch
+
 # Merge the commit into Android's LLVM fork
 ./merge_from_upstream.py --rev $NEW_SVN
 
