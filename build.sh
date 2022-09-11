@@ -49,6 +49,10 @@ git am -3 /build/0001-SONAME-is-the-same-as-major-in-LLVM-16.patch
 # Merge the commit into Android's LLVM fork
 ./merge_from_upstream.py --rev $NEW_SVN
 
+# Add a patch to "fix" AOSP builds
+cd /build/llvm-toolchain/toolchain/llvm-project
+git am -3 /build/0001-Revert-clang-Improve-diagnostics-for-expansion-lengt.patch
+
 # Make sure we have a MAJOR.MINOR.0 build and update the revision
 sed "s/_patch_level =.*/_patch_level = '0'/g" -i android_version.py
 sed "s/_svn_revision =.*/_svn_revision = '$NEW_SVN'/g" -i android_version.py
@@ -81,9 +85,6 @@ rm -rf /build/llvm-toolchain/out/
 # Do a new LLVM build with the profdata and ready for BOLT instrumentation
 cd /build/llvm-toolchain/toolchain/llvm_android
 python3 build.py --pgo --lto --bolt-instrument --build-name adrian --skip-tests --no-build windows,lldb
-
-# Create bolt out dir
-mkdir /build/llvm-toolchain/out/bolt_collection/
 
 cd /tc-build/
 rm -rf build
