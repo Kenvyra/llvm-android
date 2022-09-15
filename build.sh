@@ -53,6 +53,8 @@ git am -3 /build/0001-SONAME-is-the-same-as-major-in-LLVM-16.patch
 cd /build/llvm-toolchain/toolchain/llvm-project
 git am -3 /build/0001-Revert-clang-Improve-diagnostics-for-expansion-lengt.patch
 
+cd /build/llvm-toolchain/toolchain/llvm_android
+
 # Make sure we have a MAJOR.MINOR.0 build and update the revision
 sed "s/_patch_level =.*/_patch_level = '0'/g" -i android_version.py
 sed "s/_svn_revision =.*/_svn_revision = '$NEW_SVN'/g" -i android_version.py
