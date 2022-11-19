@@ -27,6 +27,7 @@ RUN microdnf install -y \
     jq \
     libtool \
     make \
+    musl-libc \
     ncurses-compat-libs \
     openssh-clients \
     openssl \
