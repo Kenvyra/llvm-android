@@ -15,11 +15,6 @@ git config --global user.email $BUILDER_EMAIL
 
 git config --global color.ui true
 
-export USE_CCACHE=1
-mkdir -p /build/ccache
-export CCACHE_DIR="/build/ccache"
-ccache -M $CACHE_SIZE
-
 # Download Google's dependencies
 mkdir llvm-toolchain && cd llvm-toolchain
 repo init -u https://android.googlesource.com/platform/manifest -b llvm-toolchain
@@ -49,22 +44,26 @@ sed "s/_patch_level =.*/_patch_level = '0'/g" -i android_version.py
 sed "s/_svn_revision =.*/_svn_revision = '$NEW_SVN'/g" -i android_version.py
 
 # Do an initial build ready for PGO generation
-python3 build.py --lto --build-instrumented --build-name adrian --skip-tests --no-build windows,lldb
+python3 build.py --lto --mlgo --build-instrumented --build-name adrian --skip-tests --no-build windows,lldb
 
 # Build is in /build/llvm-toolchain/out/stage2-install
-git clone https://github.com/ClangBuiltLinux/tc-build /tc-build
-mkdir -p /tc-build/build/llvm/
-cp -r /build/llvm-toolchain/out/stage2-install /tc-build/build/llvm/stage2
+git clone https://github.com/Kenvyra/tc-build /build/tc-build
+mkdir -p /build/tc-build/build/llvm/
+mv /build/llvm-toolchain/out/stage2-install /build/tc-build/build/llvm/stage2
 
+# Free some space
+rm -rf /build/llvm-toolchain/out/stage2
+rm -rf /build/llvm-toolchain/out/stage1-install
+rm -rf /build/llvm-toolchain/out/stage1
 
 # Do a PGO profiling run
-cd /tc-build/
-kernel/build.sh --pgo -t "ARM;AArch64;X86" -b /tc-build/build/llvm/
+cd /build/tc-build/
+kernel/build.sh --pgo -t "ARM;AArch64;X86" -b /build/tc-build/build/llvm/
 
 # PGO data is in /build/llvm-toolchain/out/stage2/profiles/*.profraw
 
 cd /build/llvm-toolchain/out/stage2/profiles
-/build/llvm-toolchain/out/stage1-install/bin/llvm-profdata merge -o $NEW_SVN.profdata *.profraw
+/build/tc-build/build/llvm/stage2/bin/merge-fdata merge -o $NEW_SVN.profdata *.profraw
 tar -cvjSf pgo-$NEW_SVN.tar.bz2 $NEW_SVN.profdata
 
 # Copy profdata to where Google wants it to be
@@ -75,13 +74,13 @@ rm -rf /build/llvm-toolchain/out/
 
 # Do a new LLVM build with the profdata and ready for BOLT instrumentation
 cd /build/llvm-toolchain/toolchain/llvm_android
-python3 build.py --pgo --lto --bolt-instrument --build-name adrian --skip-tests --no-build windows,lldb
+python3 build.py --pgo --lto --mlgo --bolt-instrument --build-name adrian --skip-tests --no-build windows,lldb
 
-cd /tc-build/
+cd /build/tc-build/
 rm -rf build
-mkdir -p /tc-build/build/llvm/
-cp -r /build/llvm-toolchain/out/stage2-install /tc-build/build/llvm/stage2
-kernel/build.sh --pgo -t X86 -b /tc-build/build/llvm/
+mkdir -p /build/tc-build/build/llvm/
+cp -r /build/llvm-toolchain/out/stage2-install /build/tc-build/build/llvm/stage2
+kernel/build.sh --pgo -t X86 -b /build/tc-build/build/llvm/
 
 # Merge all the bolt data into one
 cd /build/llvm-toolchain/out/bolt_collection/clang
@@ -93,10 +92,11 @@ cp /build/llvm-toolchain/out/bolt_collection/clang/bolt-$NEW_SVN.tar.bz2 /build/
 
 # Delete old builds
 rm -rf /build/llvm-toolchain/out/
+rm -rf /build/tc-build
 
 # Do a final build
 cd /build/llvm-toolchain/toolchain/llvm_android
-python3 build.py --pgo --lto --bolt --build-name adrian --skip-tests --no-build windows,lldb
+python3 build.py --pgo --lto --mlgo --bolt --build-name adrian --skip-tests --no-build windows,lldb
 
 cd /build/llvm-toolchain/out/install/linux-x86/clang-adrian
 XZ_OPT="-9 -T0" tar cJf clang-$NEW_SVN.tar.xz .

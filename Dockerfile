@@ -8,7 +8,6 @@ RUN microdnf install -y \
     binutils-devel \
     bison \
     bzip2 \
-    ccache \
     curl \
     diffutils \
     elfutils-libelf-devel \
@@ -42,6 +41,7 @@ RUN microdnf install -y \
     pkgconf-pkg-config \
     procps-ng \
     python3 \
+    python3-pip \
     rsync \
     ninja-build \
     strace \
@@ -52,6 +52,10 @@ RUN microdnf install -y \
     zlib-devel
 
 RUN curl http://commondatastorage.googleapis.com/git-repo-downloads/repo > /usr/bin/repo && chmod +x /usr/bin/repo
+
+RUN pip install tensorflow-cpu
+
+ENV TENSORFLOW_INSTALL=/usr/local/lib64/python3.10/site-packages/tensorflow
 
 WORKDIR /build
 COPY . .

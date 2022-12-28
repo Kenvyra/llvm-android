@@ -1,0 +1,160 @@
+From df4a524a51e165f858279dabf72ea9c8d7048308 Mon Sep 17 00:00:00 2001
+From: Rafael Auler <rafaelauler@fb.com>
+Date: Sat, 17 Sep 2022 19:11:56 +0200
+Subject: [PATCH] [NFC] Refactor creation of symbol+addend references
+
+---
+ bolt/include/bolt/Core/MCPlusBuilder.h        | 14 ++++++++++--
+ bolt/lib/Core/BinaryContext.cpp               | 12 +++++-----
+ bolt/lib/Core/BinaryFunction.cpp              | 15 +++++--------
+ .../Target/AArch64/AArch64MCPlusBuilder.cpp   | 22 +++++++++++--------
+ 4 files changed, 35 insertions(+), 28 deletions(-)
+
+diff --git a/bolt/include/bolt/Core/MCPlusBuilder.h b/bolt/include/bolt/Core/MCPlusBuilder.h
+index 7b3c4487f4a6..392a6761f72a 100644
+--- a/bolt/include/bolt/Core/MCPlusBuilder.h
++++ b/bolt/include/bolt/Core/MCPlusBuilder.h
+@@ -1266,8 +1266,18 @@ public:
+   /// Replace displacement in compound memory operand with given \p Label.
+   bool replaceMemOperandDisp(MCInst &Inst, const MCSymbol *Label,
+                              MCContext *Ctx) const {
+-    return replaceMemOperandDisp(
+-        Inst, MCOperand::createExpr(MCSymbolRefExpr::create(Label, *Ctx)));
++    return replaceMemOperandDisp(Inst, Label, 0, Ctx);
++  }
++
++  /// Replace displacement in compound memory operand with given \p Label
++  /// plus addend.
++  bool replaceMemOperandDisp(MCInst &Inst, const MCSymbol *Label,
++                             int64_t Addend, MCContext *Ctx) const {
++    MCInst::iterator MemOpI = getMemOperandDisp(Inst);
++    if (MemOpI == Inst.end())
++      return false;
++    return setOperandToSymbolRef(Inst, MemOpI - Inst.begin(), Label, Addend,
++                                 Ctx, 0);
+   }
+ 
+   /// Returns how many bits we have in this instruction to encode a PC-rel
+diff --git a/bolt/lib/Core/BinaryContext.cpp b/bolt/lib/Core/BinaryContext.cpp
+index a79d16e629a7..bba5e4954e0b 100644
+--- a/bolt/lib/Core/BinaryContext.cpp
++++ b/bolt/lib/Core/BinaryContext.cpp
+@@ -372,13 +372,11 @@ BinaryContext::getSubBinaryData(BinaryData *BD) {
+ std::pair<const MCSymbol *, uint64_t>
+ BinaryContext::handleAddressRef(uint64_t Address, BinaryFunction &BF,
+                                 bool IsPCRel) {
+-  uint64_t Addend = 0;
+-
+   if (isAArch64()) {
+     // Check if this is an access to a constant island and create bookkeeping
+     // to keep track of it and emit it later as part of this function.
+     if (MCSymbol *IslandSym = BF.getOrCreateIslandAccess(Address))
+-      return std::make_pair(IslandSym, Addend);
++      return std::make_pair(IslandSym, 0);
+ 
+     // Detect custom code written in assembly that refers to arbitrary
+     // constant islands from other functions. Write this reference so we
+@@ -395,7 +393,7 @@ BinaryContext::handleAddressRef(uint64_t Address, BinaryFunction &BF,
+       if (MCSymbol *IslandSym =
+               IslandIter->second->getOrCreateProxyIslandAccess(Address, BF)) {
+         BF.createIslandDependency(IslandSym, IslandIter->second);
+-        return std::make_pair(IslandSym, Addend);
++        return std::make_pair(IslandSym, 0);
+       }
+     }
+   }
+@@ -414,7 +412,7 @@ BinaryContext::handleAddressRef(uint64_t Address, BinaryFunction &BF,
+         }
+         BF.HasInternalLabelReference = true;
+         return std::make_pair(
+-            BF.addEntryPointAtOffset(Address - BF.getAddress()), Addend);
++            BF.addEntryPointAtOffset(Address - BF.getAddress()), 0);
+       }
+     } else {
+       addInterproceduralReference(&BF, Address);
+@@ -429,7 +427,7 @@ BinaryContext::handleAddressRef(uint64_t Address, BinaryFunction &BF,
+       const MCSymbol *Symbol =
+           getOrCreateJumpTable(BF, Address, JumpTable::JTT_PIC);
+ 
+-      return std::make_pair(Symbol, Addend);
++      return std::make_pair(Symbol, 0);
+     }
+   }
+ 
+@@ -439,7 +437,7 @@ BinaryContext::handleAddressRef(uint64_t Address, BinaryFunction &BF,
+   // TODO: use DWARF info to get size/alignment here?
+   MCSymbol *TargetSymbol = getOrCreateGlobalSymbol(Address, "DATAat");
+   LLVM_DEBUG(dbgs() << "Created symbol " << TargetSymbol->getName() << '\n');
+-  return std::make_pair(TargetSymbol, Addend);
++  return std::make_pair(TargetSymbol, 0);
+ }
+ 
+ MemoryContentsType BinaryContext::analyzeMemoryAt(uint64_t Address,
+diff --git a/bolt/lib/Core/BinaryFunction.cpp b/bolt/lib/Core/BinaryFunction.cpp
+index 3cacac19e979..9665481545da 100644
+--- a/bolt/lib/Core/BinaryFunction.cpp
++++ b/bolt/lib/Core/BinaryFunction.cpp
+@@ -1047,16 +1047,11 @@ void BinaryFunction::handlePCRelOperand(MCInst &Instruction, uint64_t Address,
+   uint64_t TargetOffset;
+   std::tie(TargetSymbol, TargetOffset) =
+       BC.handleAddressRef(TargetAddress, *this, /*IsPCRel*/ true);
+-  const MCExpr *Expr =
+-      MCSymbolRefExpr::create(TargetSymbol, MCSymbolRefExpr::VK_None, *BC.Ctx);
+-  if (TargetOffset) {
+-    const MCConstantExpr *Offset =
+-        MCConstantExpr::create(TargetOffset, *BC.Ctx);
+-    Expr = MCBinaryExpr::createAdd(Expr, Offset, *BC.Ctx);
+-  }
+-  MIB->replaceMemOperandDisp(Instruction,
+-                             MCOperand::createExpr(BC.MIB->getTargetExprFor(
+-                                 Instruction, Expr, *BC.Ctx, 0)));
++
++  bool ReplaceSuccess = MIB->replaceMemOperandDisp(
++      Instruction, TargetSymbol, static_cast<int64_t>(TargetOffset), &*BC.Ctx);
++  (void)ReplaceSuccess;
++  assert(ReplaceSuccess && "failed to replace mem operand with symbol+off");
+ }
+ 
+ MCSymbol *BinaryFunction::handleExternalReference(MCInst &Instruction,
+diff --git a/bolt/lib/Target/AArch64/AArch64MCPlusBuilder.cpp b/bolt/lib/Target/AArch64/AArch64MCPlusBuilder.cpp
+index c736196a84ca..9a782ab1dfed 100644
+--- a/bolt/lib/Target/AArch64/AArch64MCPlusBuilder.cpp
++++ b/bolt/lib/Target/AArch64/AArch64MCPlusBuilder.cpp
+@@ -289,21 +289,25 @@ public:
+     return true;
+   }
+ 
+-  bool replaceMemOperandDisp(MCInst &Inst, MCOperand Operand) const override {
++  MCInst::iterator getMemOperandDisp(MCInst &Inst) const override {
+     MCInst::iterator OI = Inst.begin();
+     if (isADR(Inst) || isADRP(Inst)) {
+       assert(MCPlus::getNumPrimeOperands(Inst) >= 2 &&
+              "Unexpected number of operands");
++      return ++OI;
++    }
++    const MCInstrDesc &MCII = Info->get(Inst.getOpcode());
++    for (unsigned I = 0, E = MCII.getNumOperands(); I != E; ++I) {
++      if (MCII.OpInfo[I].OperandType == MCOI::OPERAND_PCREL)
++        break;
+       ++OI;
+-    } else {
+-      const MCInstrDesc &MCII = Info->get(Inst.getOpcode());
+-      for (unsigned I = 0, E = MCII.getNumOperands(); I != E; ++I) {
+-        if (MCII.OpInfo[I].OperandType == MCOI::OPERAND_PCREL)
+-          break;
+-        ++OI;
+-      }
+-      assert(OI != Inst.end() && "Literal operand not found");
+     }
++    assert(OI != Inst.end() && "Literal operand not found");
++    return OI;
++  }
++
++  bool replaceMemOperandDisp(MCInst &Inst, MCOperand Operand) const override {
++    MCInst::iterator OI = getMemOperandDisp(Inst);
+     *OI = Operand;
+     return true;
+   }
+-- 
+2.37.3
+
