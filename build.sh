@@ -4,7 +4,6 @@ set -ex
 
 BUILDER_USER="leonardo"
 BUILDER_EMAIL="not@existing.org"
-CACHE_SIZE="100GB"
 THREAD_COUNT=$(nproc --all)
 
 # Get the latest LLVM commit, which is the one we want to build
@@ -63,7 +62,7 @@ kernel/build.sh --pgo -t "ARM;AArch64;X86" -b /build/tc-build/build/llvm/
 # PGO data is in /build/llvm-toolchain/out/stage2/profiles/*.profraw
 
 cd /build/llvm-toolchain/out/stage2/profiles
-/build/tc-build/build/llvm/stage2/bin/merge-fdata merge -o $NEW_SVN.profdata *.profraw
+/build/tc-build/build/llvm/stage2/bin/llvm-profdata merge -o $NEW_SVN.profdata *.profraw
 tar -cvjSf pgo-$NEW_SVN.tar.bz2 $NEW_SVN.profdata
 
 # Copy profdata to where Google wants it to be
@@ -79,12 +78,18 @@ python3 build.py --pgo --lto --mlgo --bolt-instrument --build-name adrian --skip
 cd /build/tc-build/
 rm -rf build
 mkdir -p /build/tc-build/build/llvm/
-cp -r /build/llvm-toolchain/out/stage2-install /build/tc-build/build/llvm/stage2
+mv /build/llvm-toolchain/out/stage2-install /build/tc-build/build/llvm/stage2
+
+# Intermediate cleanup
+rm -rf /build/llvm-toolchain/out/stage2
+rm -rf /build/llvm-toolchain/out/stage1-install
+rm -rf /build/llvm-toolchain/out/stage1
+
 kernel/build.sh --pgo -t X86 -b /build/tc-build/build/llvm/
 
 # Merge all the bolt data into one
 cd /build/llvm-toolchain/out/bolt_collection/clang
-/build/llvm-toolchain/out/stage2-install/bin/merge-fdata *.fdata > clang.fdata
+/build/tc-build/build/llvm/stage2/bin/merge-fdata *.fdata > clang.fdata
 tar -cvjf bolt-$NEW_SVN.tar.bz2 clang.fdata
 
 # Copy bolt data to where Google wants it to be
