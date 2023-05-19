@@ -42,6 +42,10 @@ cd /build/llvm-toolchain/toolchain/llvm_android
 sed "s/_patch_level =.*/_patch_level = '0'/g" -i android_version.py
 sed "s/_svn_revision =.*/_svn_revision = '$NEW_SVN'/g" -i android_version.py
 
+# Fixup patches for upstream compatibility
+cp /build/disable-symlink-resolve-test-on-android.patch patches/disable-symlink-resolve-test-on-android.patch
+cp /build/avoid-fifo-socket-hardlink-in-libcxx-tests.patch patches/avoid-fifo-socket-hardlink-in-libcxx-tests.patch
+
 # Do an initial build ready for PGO generation
 python3 build.py --lto --mlgo --build-instrumented --build-name adrian --skip-tests --no-build windows,lldb
 

@@ -1,0 +1,52 @@
+From 0992b5168125d65a985b624dd9bb11d886bc55e6 Mon Sep 17 00:00:00 2001
+From: Ryan Prichard <rprichard@google.com>
+Date: Wed, 18 May 2022 22:40:56 -0700
+Subject: [PATCH] Disable test_no_resolve_symlink_on_symlink on Android
+
+The test is intended to ensure a particular behavior, but different
+versions of Android (even just L and up) have multiple possible
+behaviors.
+
+Starting with Android M, fchmodat appears to successfully modify the
+permissions of a symlink on an ext4 filesystem (but not f2fs). With
+Android R, fchmodat then fails with operation_not_supported, but still
+modifies the symlink's permissions. This issue is tracked internally at
+http://b/262631136.
+
+Differential Revision: https://reviews.llvm.org/D140183
+---
+ .../fs.op.permissions/permissions.pass.cpp        | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/libcxx/test/std/input.output/filesystems/fs.op.funcs/fs.op.permissions/permissions.pass.cpp b/libcxx/test/std/input.output/filesystems/fs.op.funcs/fs.op.permissions/permissions.pass.cpp
+index dc5ff1188521..b54fd7de9ddb 100644
+--- a/libcxx/test/std/input.output/filesystems/fs.op.funcs/fs.op.permissions/permissions.pass.cpp
++++ b/libcxx/test/std/input.output/filesystems/fs.op.funcs/fs.op.permissions/permissions.pass.cpp
+@@ -135,10 +135,23 @@ static void basic_permissions_test()
+     }
+ }
+ 
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__ANDROID__)
+ // This test isn't currently meaningful on Windows; the Windows file
+ // permissions visible via std::filesystem doesn't show any difference
+ // between owner/group/others.
++//
++// Skip the test on Android because the behavior varies widely. A device
++// may do one of these things:
++//  - Ignore nofollow and modify the target (e.g. L emulator).
++//  - Refuse to let the shell user create a symlink (e.g. physical L device,
++//    volantis or Nexus 7 2013).
++//  - Change the symlink's permissions successfully (e.g. emulators from
++//    Android M to Q, ext4 filesystem).
++//  - Change the symlink's permissions, then fail with operation_not_supported
++//    anyway (e.g. R emulator and later, ext4 filesystem, see Google internal
++//    bug http://b/262631136).
++//  - Do nothing and fail with operation_not_supported (e.g. devices using f2fs
++//    for /data/local/tmp).
+ static void test_no_resolve_symlink_on_symlink()
+ {
+     scoped_test_env env;
+-- 
+2.40.1
+
