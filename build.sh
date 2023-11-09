@@ -16,7 +16,7 @@ git config --global color.ui true
 
 # Download Google's dependencies
 mkdir llvm-toolchain && cd llvm-toolchain
-repo init -u https://android.googlesource.com/platform/manifest -b llvm-toolchain
+repo init -u https://android.googlesource.com/platform/manifest -b llvm-toolchain-testing
 repo sync -c --jobs-network=$(( $THREAD_COUNT < 16 ? $THREAD_COUNT : 16 )) -j$THREAD_COUNT --jobs-checkout=$THREAD_COUNT --no-clone-bundle --no-tags
 
 # Add the upstream LLVM remote
@@ -31,12 +31,14 @@ NEW_SVN=$(python3 llvm_tools/git_llvm_rev.py --llvm_dir /build/llvm-toolchain/to
 # Merge the commit into Android's LLVM fork
 cd /build/llvm-toolchain/toolchain/llvm_android
 
-git am -3 /build/0001-Check-lib64-for-libs-too.patch
-
 # Merge the commit into Android's LLVM fork
 ./merge_from_upstream.py --rev $NEW_SVN
 
 cd /build/llvm-toolchain/toolchain/llvm_android
+
+# Apply patches
+git am -3 /build/0001-Update-applied-patches.patch
+git am -3 /build/0001-Fix-BOLT.patch
 
 # Make sure we have a MAJOR.MINOR.0 build and update the revision
 sed "s/_patch_level =.*/_patch_level = '0'/g" -i android_version.py
@@ -45,6 +47,8 @@ sed "s/_svn_revision =.*/_svn_revision = '$NEW_SVN'/g" -i android_version.py
 # Fixup patches for upstream compatibility
 cp /build/disable-symlink-resolve-test-on-android.patch patches/disable-symlink-resolve-test-on-android.patch
 cp /build/avoid-fifo-socket-hardlink-in-libcxx-tests.patch patches/avoid-fifo-socket-hardlink-in-libcxx-tests.patch
+cp /build/hide-locale-lit-features-for-bionic.patch patches/hide-locale-lit-features-for-bionic.patch
+cp /build/bionic-includes-plus-sign-for-nan.patch patches/bionic-includes-plus-sign-for-nan.patch
 
 # Do an initial build ready for PGO generation
 python3 build.py --lto --mlgo --build-instrumented --build-name adrian --skip-tests --no-build windows,lldb

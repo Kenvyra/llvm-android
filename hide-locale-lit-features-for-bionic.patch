@@ -1,0 +1,38 @@
+From c0c7baf5dbeb3c090c4dc215763dfac7c2bed7c5 Mon Sep 17 00:00:00 2001
+From: Ryan Prichard <rprichard@google.com>
+Date: Thu, 28 Apr 2022 16:24:51 -0700
+Subject: [PATCH] Hide locale Lit features for Bionic
+
+Bionic's locale support is simplistic: it only recognizes two locales,
+"C" (aka "POSIX") and "C.UTF-8" (aka "en_US.UTF-8"). The locale mode
+determines the MB_CUR_MAX, but there is no true locale stuff (e.g.
+number formatting). Treat Bionic as if it lacks locales.
+
+Differential Revision: https://reviews.llvm.org/D137130
+---
+ libcxx/utils/libcxx/test/dsl.py | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/libcxx/utils/libcxx/test/dsl.py b/libcxx/utils/libcxx/test/dsl.py
+index 8a753f59e..b9ff4fbe4 100644
+--- a/libcxx/utils/libcxx/test/dsl.py
++++ b/libcxx/utils/libcxx/test/dsl.py
+@@ -264,9 +264,14 @@ def hasAnyLocale(config, locales):
+     %{exec} -- this means that the command may be executed on a remote host
+     depending on the %{exec} substitution.
+     """
++    # Bionic's locale support is simplistic: it only recognizes two locales, "C"
++    # (aka "POSIX") and "C.UTF-8" (aka "en_US.UTF-8"). The locale mode determines
++    # the MB_CUR_MAX, but there is no true locale stuff (e.g. number formatting).
++    # Treat Bionic as if it lacks locales.
+     program = """
+     #include <stddef.h>
+-    #if defined(_LIBCPP_HAS_NO_LOCALIZATION)
++    #include <stdlib.h>
++    #if defined(_LIBCPP_HAS_NO_LOCALIZATION) || defined(__BIONIC__)
+       int main(int, char**) { return 1; }
+     #else
+       #include <locale.h>
+-- 
+2.40.1
+

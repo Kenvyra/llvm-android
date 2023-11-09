@@ -1,0 +1,137 @@
+From 4b574e9ad592b5c332ddafe51b0ebacb65c170ea Mon Sep 17 00:00:00 2001
+From: Jens Reidel <jens.reidel@gmail.com>
+Date: Tue, 15 Aug 2023 23:10:33 +0200
+Subject: [PATCH] Fix BOLT
+
+Signed-off-by: Jens Reidel <jens.reidel@gmail.com>
+Change-Id: I650c27972c32451015f1292793673b6ba828f482
+---
+ ...e-Use-correct-output-paths-and-passt.patch | 91 +++++++++++++++++++
+ patches/PATCHES.json                          | 14 +++
+ 2 files changed, 105 insertions(+)
+ create mode 100644 patches/0001-Revert-BOLT-CMake-Use-correct-output-paths-and-passt.patch
+
+diff --git a/patches/0001-Revert-BOLT-CMake-Use-correct-output-paths-and-passt.patch b/patches/0001-Revert-BOLT-CMake-Use-correct-output-paths-and-passt.patch
+new file mode 100644
+index 0000000..3bd3835
+--- /dev/null
++++ b/patches/0001-Revert-BOLT-CMake-Use-correct-output-paths-and-passt.patch
+@@ -0,0 +1,91 @@
++From d8c0021a57338b4fefc7da47743f087447373999 Mon Sep 17 00:00:00 2001
++From: Jens Reidel <adrian@travitia.xyz>
++Date: Tue, 15 Aug 2023 23:07:40 +0200
++Subject: [PATCH] Revert "[BOLT][CMake] Use correct output paths and
++ passthrough necessary options"
++
++This reverts commit 9e6e3375f12e5e61dd2e371d94c263e3862f58a1.
++---
++ bolt/CMakeLists.txt                     | 8 +-------
++ bolt/runtime/CMakeLists.txt             | 6 +++---
++ clang/cmake/caches/Fuchsia-stage2.cmake | 2 +-
++ 3 files changed, 5 insertions(+), 11 deletions(-)
++
++diff --git a/bolt/CMakeLists.txt b/bolt/CMakeLists.txt
++index 4ff90c1f7b3a..684caf6885c8 100644
++--- a/bolt/CMakeLists.txt
+++++ b/bolt/CMakeLists.txt
++@@ -87,10 +87,6 @@ endif()
++ 
++ if (BOLT_ENABLE_RUNTIME)
++   message(STATUS "Building BOLT runtime libraries for X86")
++-  set(extra_args "")
++-  if(CMAKE_SYSROOT)
++-    list(APPEND extra_args -DCMAKE_SYSROOT=${CMAKE_SYSROOT})
++-  endif()
++   ExternalProject_Add(bolt_rt
++     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
++     STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/bolt_rt-stamps
++@@ -99,10 +95,8 @@ if (BOLT_ENABLE_RUNTIME)
++                -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
++                -DCMAKE_BUILD_TYPE=Release
++                -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+++               -DCMAKE_INSTALL_PREFIX=${LLVM_BINARY_DIR}
++                -DLLVM_LIBDIR_SUFFIX=${LLVM_LIBDIR_SUFFIX}
++-               -DLLVM_LIBRARY_DIR=${LLVM_LIBRARY_DIR}
++-               ${extra_args}
++-    INSTALL_COMMAND ""
++     BUILD_ALWAYS True
++     )
++   install(CODE "execute_process\(COMMAND \${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX=\${CMAKE_INSTALL_PREFIX} -P ${CMAKE_CURRENT_BINARY_DIR}/bolt_rt-bins/cmake_install.cmake \)"
++diff --git a/bolt/runtime/CMakeLists.txt b/bolt/runtime/CMakeLists.txt
++index 8472ce00b413..37a894702206 100644
++--- a/bolt/runtime/CMakeLists.txt
+++++ b/bolt/runtime/CMakeLists.txt
++@@ -15,12 +15,12 @@ add_library(bolt_rt_instr STATIC
++   instr.cpp
++   ${CMAKE_CURRENT_BINARY_DIR}/config.h
++   )
++-set_target_properties(bolt_rt_instr PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${LLVM_LIBRARY_DIR}")
+++set_target_properties(bolt_rt_instr PROPERTIES LIBRARY_OUTPUT_DIRECTORY "lib${LLVM_LIBDIR_SUFFIX}")
++ add_library(bolt_rt_hugify STATIC
++   hugify.cpp
++   ${CMAKE_CURRENT_BINARY_DIR}/config.h
++   )
++-set_target_properties(bolt_rt_hugify PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${LLVM_LIBRARY_DIR}")
+++set_target_properties(bolt_rt_hugify PROPERTIES LIBRARY_OUTPUT_DIRECTORY "lib${LLVM_LIBDIR_SUFFIX}")
++ 
++ set(BOLT_RT_FLAGS
++   -ffreestanding
++@@ -44,7 +44,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES ".*Clang.*")
++     instr.cpp
++     ${CMAKE_CURRENT_BINARY_DIR}/config.h
++   )
++-  set_target_properties(bolt_rt_instr_osx PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${LLVM_LIBRARY_DIR}")
+++  set_target_properties(bolt_rt_instr_osx PROPERTIES LIBRARY_OUTPUT_DIRECTORY "lib${LLVM_LIBDIR_SUFFIX}")
++   target_include_directories(bolt_rt_instr_osx PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
++   target_compile_options(bolt_rt_instr_osx PRIVATE
++     -target x86_64-apple-darwin19.6.0
++diff --git a/clang/cmake/caches/Fuchsia-stage2.cmake b/clang/cmake/caches/Fuchsia-stage2.cmake
++index 42d7f36df3f9..8f71219837ab 100644
++--- a/clang/cmake/caches/Fuchsia-stage2.cmake
+++++ b/clang/cmake/caches/Fuchsia-stage2.cmake
++@@ -296,6 +296,7 @@ set(LLVM_INSTALL_TOOLCHAIN_ONLY ON CACHE BOOL "")
++ set(LLVM_TOOLCHAIN_TOOLS
++   dsymutil
++   llvm-ar
+++  llvm-bolt
++   llvm-cov
++   llvm-cxxfilt
++   llvm-debuginfod
++@@ -332,7 +333,6 @@ set(LLVM_TOOLCHAIN_TOOLS
++   CACHE STRING "")
++ 
++ set(LLVM_Toolchain_DISTRIBUTION_COMPONENTS
++-  bolt
++   clang
++   lld
++   clang-apply-replacements
++-- 
++2.41.0
++
+diff --git a/patches/PATCHES.json b/patches/PATCHES.json
+index 20205f2..294bce1 100644
+--- a/patches/PATCHES.json
++++ b/patches/PATCHES.json
+@@ -591,5 +591,19 @@
+             "from": 498229,
+             "until": null
+         }
++    },
++    {
++        "metdata": {
++            "info" [],
++            "title": "Revert \"[BOLT][CMake] Use correct output paths and passthrough necessary options\""
++        },
++        "platforms": [
++            "android"
++        ],
++        "rel_patch_path": "0001-Revert-BOLT-CMake-Use-correct-output-paths-and-passt.patch",
++        "version_range": {
++            "from": 498229,
++            "until": null
++        }
+     }
+ ]
+-- 
+2.41.0
+

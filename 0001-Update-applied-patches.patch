@@ -1,0 +1,26 @@
+From b12e3d5a4f0acdde47f792f3a717128e4a2fdb97 Mon Sep 17 00:00:00 2001
+From: Jens Reidel <adrian@travitia.xyz>
+Date: Tue, 27 Jun 2023 15:27:24 +0200
+Subject: [PATCH] Update applied patches
+
+Signed-off-by: Jens Reidel <adrian@travitia.xyz>
+---
+ patches/PATCHES.json | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/patches/PATCHES.json b/patches/PATCHES.json
+index c4d71f7..693a9e1 100644
+--- a/patches/PATCHES.json
++++ b/patches/PATCHES.json
+@@ -816,7 +816,7 @@
+         "rel_patch_path": "android-temp-dir-is-data-local-tmp-v2.patch",
+         "version_range": {
+             "from": 490301,
+-            "until": null
++            "until": 502057
+         }
+     },
+     {
+-- 
+2.41.0
+

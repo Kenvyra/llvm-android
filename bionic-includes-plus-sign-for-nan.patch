@@ -1,0 +1,63 @@
+From 6b570d13a0772506f1d1853aeab9bb667cc5f64a Mon Sep 17 00:00:00 2001
+From: Ryan Prichard <rprichard@google.com>
+Date: Thu, 28 Apr 2022 16:29:44 -0700
+Subject: [PATCH] Bionic also includes + for NAN
+
+However, it did not do so for Android L (APIs 21 and 22), so define a
+compiler macro, _LIBCPP_TESTING_ANDROID_PRINTF_NAN_NO_SIGN, to adjust
+the behavior of the facet.num.put.members/put_long_double.pass.cpp
+test.
+
+Differential Revision: https://reviews.llvm.org/D139497
+---
+ .../put_long_double.pass.cpp                  |  3 ++-
+ libcxx/utils/libcxx/test/features.py          | 19 +++++++++++++++++++
+ 2 files changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/libcxx/test/std/localization/locale.categories/category.numeric/locale.nm.put/facet.num.put.members/put_long_double.pass.cpp b/libcxx/test/std/localization/locale.categories/category.numeric/locale.nm.put/facet.num.put.members/put_long_double.pass.cpp
+index 3327a35a6..ce87cbb38 100644
+--- a/libcxx/test/std/localization/locale.categories/category.numeric/locale.nm.put/facet.num.put.members/put_long_double.pass.cpp
++++ b/libcxx/test/std/localization/locale.categories/category.numeric/locale.nm.put/facet.num.put.members/put_long_double.pass.cpp
+@@ -10732,7 +10732,8 @@ void test5()
+     std::string nan= "nan";
+     std::string NaN = "NAN";
+     std::string nan_padding25 = "**********************";
+-#if defined(TEST_HAS_GLIBC) || defined(_WIN32)
++#if defined(TEST_HAS_GLIBC) || defined(_WIN32) || \
++        (defined(__BIONIC__) && !defined(_LIBCPP_TESTING_ANDROID_PRINTF_NAN_NO_SIGN))
+     std::string pnan_sign = "+";
+     std::string pnan_padding25 = "*********************";
+ #else
+diff --git a/libcxx/utils/libcxx/test/features.py b/libcxx/utils/libcxx/test/features.py
+index b4478b55c..d8d6ad4aa 100644
+--- a/libcxx/utils/libcxx/test/features.py
++++ b/libcxx/utils/libcxx/test/features.py
+@@ -223,6 +223,25 @@ DEFAULT_FEATURES = [
+           """,
+         ),
+     ),
++
++    # Check for an Android NAN printf change. Considering NAN and -NAN:
++    #  - Android L (APIs 21 and 22): "%f" and "%+f" print "nan".
++    #  - Android M (API 23) and up: "%f" prints "nan" or "-nan", "%+f" prints
++    #    "+nan" or "-nan".
++    # Set this feature for L, where the sign is never printed. Otherwise, "%+f"
++    # for non-negative NAN prints the '+' sign.
++    Feature(name='android-printf-nan-no-sign',
++            when=lambda cfg: '__ANDROID__' in compilerMacros(cfg) and not programSucceeds(cfg, """
++              #include <math.h>
++              #include <stdio.h>
++              int main(int, char**) {
++                char buf[100];
++                snprintf(buf, sizeof(buf), "%+f", NAN);
++                return buf[0] != '+';
++              }
++            """),
++            actions=[AddCompileFlag('-D_LIBCPP_TESTING_ANDROID_PRINTF_NAN_NO_SIGN')]),
++
+     # Whether Bash can run on the executor.
+     # This is not always the case, for example when running on embedded systems.
+     #
+-- 
+2.40.1
+
